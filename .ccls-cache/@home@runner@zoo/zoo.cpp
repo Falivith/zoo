@@ -1,60 +1,59 @@
-#include <chrono>
+#include <chrono> // Função SLEEP
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <random> // Sorteio de quantas horas serão dormidas
 #include <thread>
+#include <condition_variable>
 
-#define num_leoes 2
-#define num_avestruzes 2
-#define num_suricatos 2
+#define N_LEOES 2
+#define N_AVESTRUZES 2
+#define N_SURICATOS 2
 
 using namespace std;
 
+mutex mtx;  // Mutex para sincronizar o acesso ao tempo (relógio global)
+condition_variable cv;  // variável condicional para notificar outras threads
+
+int tempo = 0;  // tempo em horas
+
+class Util {
+public:
+  static int random(int botLimit, int topLimit) {
+    unsigned seed = chrono::system_clock::now().time_since_epoch().count();
+    mt19937 rng(seed);
+    uniform_int_distribution<> distrib(botLimit, topLimit);
+    return distrib(rng);
+  }
+};
+
 class Animal {
 protected:
+  static mutex mutex_;
   static int contador;
   int id;
 
 public:
+  void virtual comer() {}
+  void virtual exibir() {}
+  void virtual dormir() {}
+
+  void viver() {
+    while(true){
+      comer();
+      exibir();
+      comer();
+      dormir();
+    }
+  }
+
   Animal() {
     contador++;
     id = contador;
   }
-
-  void virtual comer() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Comendo... " << id << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-
-  void virtual exibir() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Se exibindo... " << id << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-
-  void virtual dormir() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Dormindo... " << id << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-
-  void viver() {
-    comer();
-    exibir();
-    comer();
-    dormir();
-  }
-
-protected:
-  static mutex mutex_;
 };
 
 int Animal::contador = 0;
-
 mutex Animal::mutex_;
 
 class Leao : public Animal {
@@ -62,24 +61,31 @@ public:
   Leao() : Animal() {}
 
   void comer() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Comendo comida de Leão...(Leão < " << id << " >)" << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Leão comendo...          (Leão < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::milliseconds(1));
   }
 
   void exibir() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Exibindo a Juba..(Leão < " << id << " >)" << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Exibindo a Juba..        (Leão < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::milliseconds(1));
   }
 
   void dormir() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Dormindo... (Leão < " << id << " >)" << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Dormindo...              (Leão < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::seconds(Util::random(1, 2)));
+    cout << "Acordei...               (Leão < " << id << " >)" << endl;
   }
 };
 
@@ -88,24 +94,31 @@ public:
   Avestruz() : Animal() {}
 
   void comer() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Comendo comida de Avestruz...(Avestruz < " << id << " >)" << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Avestruz comendo...      (Avestruz < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::milliseconds(1));
   }
 
   void exibir() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Exibindo o pescoço..(Avestruz < " << id << " >)" << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Exibindo o pescoço...    (Avestruz < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::milliseconds(1));
   }
 
   void dormir() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Dormindo... (Avestruz < " << id << " >)" << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Dormindo...              (Avestruz < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::seconds(Util::random(1, 2)));
+    cout << "Acordei...               (Avestruz < " << id << " >)" << endl;
   }
 };
 
@@ -114,56 +127,66 @@ public:
   Suricato() : Animal() {}
 
   void comer() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Comendo comida de Suricato...(Suricato < " << id << " >)" << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Suricato comendo...      (Suricato < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::milliseconds(1));
   }
 
   void exibir() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Exibindo a carinha de suricato..(Suricato < " << id << " >)"
-         << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Suricato se exibindo...  (Suricato < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::milliseconds(1));
   }
 
   void dormir() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    cout << "Dormindo... (Suricato < " << id << " >)" << endl;
-    lock.unlock(); // faz o unlock manualmente
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    unique_lock<mutex> lock(mutex_);
+    cout << "Dormindo...              (Suricato < " << id << " >)" << endl;
+    lock.unlock();
+
+    this_thread::sleep_for(chrono::seconds(Util::random(1, 2)));
+    cout << "Acordei...               (Suricato < " << id << " >)" << endl;
   }
 };
 
 int main() {
 
-  Leao leoes[num_leoes];
-  Suricato suricatos[num_suricatos];
-  Avestruz avestruzes[num_avestruzes];
-  thread threads[num_suricatos + num_leoes + num_avestruzes];
+  Animal *animais[N_LEOES + N_SURICATOS + N_AVESTRUZES];
+  const int N_THREADS = N_LEOES + N_SURICATOS + N_AVESTRUZES;
 
-  int id = 0;
-  
-  for (int i = 0; i < num_leoes; i++) {
-      threads[i] = thread(&Animal::viver, &leoes[id]);
-      id++;
+  for (int i = 0; i < N_LEOES; i++) {
+    animais[i] = new Leao();
   }
 
-  id = 0;
-
-  for (int i = num_leoes; i < num_suricatos + num_leoes; i++) {
-      threads[i] = thread(&Animal::viver, &suricatos[id]);
+  for (int i = N_LEOES; i < N_LEOES + N_SURICATOS; i++) {
+    animais[i] = new Suricato();
   }
 
-  id = 0;
-  
-  for (int i = num_suricatos + num_leoes; i < num_suricatos + num_leoes +
-  num_avestruzes; i++) { threads[i] = thread(&Animal::viver, &avestruzes[id]);
+  for (int i = N_LEOES + N_SURICATOS; i < N_LEOES + N_SURICATOS + N_AVESTRUZES;
+       i++) {
+    animais[i] = new Avestruz();
   }
 
-  for (int i = 0; i < num_suricatos + num_leoes + num_avestruzes; i++) {
-      threads[i].join();
+  thread threads[N_THREADS];
+
+  // Lança a rotina viver para todos animais
+
+  for (int i = 0; i < N_THREADS; i++) {
+    threads[i] = thread(&Animal::viver, animais[i]);
+  }
+
+  for (int i = 0; i < N_THREADS; i++) {
+    threads[i].join();
+  }
+
+  for (int i = 0; i < N_THREADS; i++) {
+    delete animais[i];
   }
 
   return 0;
