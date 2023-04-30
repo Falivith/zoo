@@ -25,6 +25,15 @@ public:
     uniform_int_distribution<> distrib(botLimit, topLimit);
     return distrib(rng);
   }
+
+  static void tempo(){
+    int segundos = 0;
+    while (true) {
+        // Executa a tarefa a cada segundo
+        this_thread::sleep_for(chrono::seconds(1));
+        cout << "Executando a tarefa depois de " << ++segundos << " segundos\n";
+    }
+  }
 };
 
 class Animal {
@@ -159,7 +168,8 @@ int main() {
 
   Animal *animais[N_LEOES + N_SURICATOS + N_AVESTRUZES];
   const int N_THREADS = N_LEOES + N_SURICATOS + N_AVESTRUZES;
-
+  thread tempo(&Util::tempo);
+  
   for (int i = 0; i < N_LEOES; i++) {
     animais[i] = new Leao();
   }
