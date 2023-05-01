@@ -3,29 +3,35 @@
 #include <fstream>
 #include <iostream>
 #include <mutex>
-#include <random>
-#include <thread>
-#include <semaphore.h>
 #include <pthread.h>
+#include <queue>
+#include <random>
+#include <semaphore>
+#include <thread>
 
-#define N_LEOES 10
-#define N_AVESTRUZES 0
-#define N_SURICATOS 0
-#define N_VETERINARIOS 1
+#define N_LEOES 4
+#define N_AVESTRUZES 7
+#define N_SURICATOS 10
+#define N_VETERINARIOS 2
 // Segundos
-#define TEMPO_EXECUCAO 15
+#define TEMPO_EXECUCAO 100
 // Milissegundos
 #define TEMPO_ACAO 500
 
 using namespace std;
 
-bool continuarExecutando = true; // Flag pra finalizar as threads
+// Flag para finalizar a execução das threads
+bool continuarExecutando = true;
+priority_queue<int> queue_leoes;
+mutex priority_queue_leoes;
+priority_queue<int> queue_avestruzes;
+mutex priority_queue_avestruzes;
+priority_queue<int> queue_suricatos;
+mutex priority_queue_suricatos;
 
 // Comedouros de dentro da jaula dos animais
 int comedouroLeoes = 0;
 mutex mutexComedouroLeoes;
-
-sem_t smphComedouroLeoes;  
 
 int comedouroSuricatos = 0;
 mutex mutexComedouroSuricatos;
@@ -33,14 +39,17 @@ mutex mutexComedouroSuricatos;
 int comedouroAvestruzes = 0;
 mutex mutexComedouroAvestruzes;
 
+// Barreira pra finalização e sincronização do relatório
+pthread_barrier_t barreira;
+
 // Estoque do zoológico de cada tipo de alimento
-int estoqueCarne = 100;
+int estoqueCarne = 30;
 mutex mutexEstoqueCarne;
 
-int estoqueLarvas = 100;
+int estoqueLarvas = 30;
 mutex mutexEstoqueLarvas;
 
-int estoquePasto = 100;
+int estoquePasto = 30;
 mutex mutexEstoquePasto;
 
 class Util {
@@ -58,7 +67,10 @@ public:
 
     while (continuarExecutando) {
       this_thread::sleep_for(chrono::seconds(1));
-      cout << endl << ++segundos << " HORAS" << endl << comedouroLeoes << endl;
+      cout << ++segundos << " HORAS" << endl
+           << "Carnes < " << comedouroLeoes << " > |"
+           << " Pastos < " << comedouroAvestruzes << " > |"
+           << " Larvas < " << comedouroSuricatos << " > |" << endl;
       if (segundos == TEMPO_EXECUCAO) {
         continuarExecutando = false;
       }
@@ -86,7 +98,10 @@ public:
       comer();
       dormir();
     }
+    pthread_barrier_wait(&barreira);
+    unique_lock<mutex> lockCouts(mutex_animais);
     encerrar();
+    lockCouts.unlock();
   }
 
   Animal() {
@@ -105,62 +120,60 @@ public:
 
   void comer() {
 
-    int tempoEspera = 0;
     int qtdComida = Util::random(2, 5);
-    
-    while (comedouroLeoes < qtdComida) {
-      /*
-        if (tempoEspera == 500) {
-          cout << "LEÃO < " << id << " > ESPERANDO < " << qtdComida
-               << " > CARNES DISPONÍVEIS" << endl;
-          tempoEspera = 0;
-        } */
+    int tempoDeEspera = 0;
+    bool querComer = true;
+    int priority = 0;
 
-        this_thread::sleep_for(chrono::milliseconds(Util::random(0, 3)));
-       /* tempoEspera++;
-        // caso nao haja comida suficiente, ele fica esperando até o veterinario
-        // colocar mais comida
-        */
+    unique_lock<mutex> lockComedouroLeoes(mutexComedouroLeoes, defer_lock);
+
+    lock_guard<mutex> lock(priority_queue_leoes);
+    priority++;
+    queue_leoes.push(priority);
+
+    while (querComer) {
+
+      lockComedouroLeoes.lock();
+
+      if (comedouroLeoes - qtdComida >= 0 && queue_leoes.top() == priority) {
+        cout << "LEÃO     < ID " << id << " > COMENDO < " << qtdComida
+             << " > CARNES." << endl;
+        comedouroLeoes = comedouroLeoes - qtdComida;
+        registro = registro + qtdComida;
+        querComer = false;
+        queue_leoes.pop();
+        priority = 0;
+      } else {
+        // cout << "LEÃO < " << id << " > TEVE A CHANCE DE COMER, MAS NÃO ROLOU"
+        // << endl
+        tempoDeEspera++;
+        priority++;
+        queue_leoes.push(priority);
+      }
+      lockComedouroLeoes.unlock();
+
+      this_thread::sleep_for(chrono::milliseconds(500));
 
       if (!continuarExecutando) {
         return;
       }
     }
-
-    sem_wait(&smphComedouroLeoes);
-    //unique_lock<mutex> lockComedouroLeoes(mutexComedouroLeoes);
-    cout << "LEÃO < " << id << " > COMENDO < " << qtdComida << " > CARNES"
-         << endl;
-    comedouroLeoes = comedouroLeoes - qtdComida;
-    //lockComedouroLeoes.unlock();
-    
-    registro = registro + qtdComida;
-
-    sem_post(&smphComedouroLeoes);
   }
 
   void exibir() {
-
-    unique_lock<mutex> lock(mutex_animais);
-    cout << "LEÃO < " << id << " > EXIBINDO A JUBA" << endl;
-    lock.unlock();
-
+    cout << "LEÃO     < ID " << id << " > EXIBINDO A JUBA." << endl;
     this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
   }
 
   void dormir() {
-
-    unique_lock<mutex> lock(mutex_animais);
-    cout << "LEÃO < " << id << " > DORMINDO" << endl;
-    lock.unlock();
-
-    this_thread::sleep_for(chrono::seconds(Util::random(1, 2)));
-    cout << "LEÃO < " << id << " > ACORDOU" << endl;
+    cout << "LEÃO     < ID " << id << " > DORMINDO." << endl;
+    this_thread::sleep_for(chrono::seconds(Util::random(8, 12)));
+    cout << "LEÃO     < ID " << id << " > ACORDOU." << endl;
   }
 
   void encerrar() {
-    cout << "Relatório >> "
-         << "LEÃO < " << id << " > COMEU: < " << registro << " > CARNES"
+    cout << "| RELATÓRIO | >> "
+         << "LEÃO < ID: " << id << " > COMEU: < " << registro << " > CARNES."
          << endl;
   }
 };
@@ -171,30 +184,66 @@ public:
 
   void comer() {
 
-    unique_lock<mutex> lock(mutex_animais);
-    cout << "Avestruz comendo...      (Avestruz < " << id << " >)" << endl;
-    lock.unlock();
+    int qtdComida = Util::random(4, 8);
+    int tempoDeEspera = 0;
+    bool querComer = true;
+    int priority = 0;
 
-    this_thread::sleep_for(chrono::milliseconds(1));
+    unique_lock<mutex> lockComedouroAvestruzes(mutexComedouroAvestruzes,
+                                               defer_lock);
+
+    lock_guard<mutex> lock(priority_queue_avestruzes);
+    priority++;
+    queue_avestruzes.push(priority);
+
+    while (querComer) {
+
+      lockComedouroAvestruzes.lock();
+
+      if (comedouroAvestruzes - qtdComida >= 0 &&
+          queue_avestruzes.top() == priority) {
+        cout << "AVESTRUZ < ID: " << id << " > COMENDO < " << qtdComida
+             << " > PASTOS E ERVAS" << endl;
+        comedouroAvestruzes = comedouroAvestruzes - qtdComida;
+        registro = registro + qtdComida;
+        querComer = false;
+        queue_avestruzes.pop();
+        priority = 0;
+      } else {
+        tempoDeEspera++;
+        priority++;
+        queue_avestruzes.push(priority);
+      }
+      lockComedouroAvestruzes.unlock();
+
+      this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
+
+      if (!continuarExecutando) {
+        return;
+      }
+    }
   }
 
   void exibir() {
 
-    unique_lock<mutex> lock(mutex_animais);
-    cout << "Exibindo o pescoço...    (Avestruz < " << id << " >)" << endl;
-    lock.unlock();
+    // unique_lock<mutex> lock(mutex_animais);
+    cout << "AVESTRUZ < ID: " << id << " > EXIBINDO O PESCOÇO" << endl;
+    // lock.unlock();
 
     this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
   }
 
   void dormir() {
 
-    unique_lock<mutex> lock(mutex_animais);
-    cout << "Dormindo...              (Avestruz < " << id << " >)" << endl;
-    lock.unlock();
-
+    cout << "AVESTRUZ < ID: " << id << " > DORMINDO" << endl;
     this_thread::sleep_for(chrono::seconds(Util::random(1, 2)));
-    cout << "Acordei...               (Avestruz < " << id << " >)" << endl;
+    cout << "AVESTRUZ < ID: " << id << " > ACORDOU" << endl;
+  }
+
+  void encerrar() {
+    cout << "| RELATÓRIO | >> "
+         << "AVESTRUZ < ID: " << id << " > COMEU: < " << registro
+         << " > PASTOS E ERVAS." << endl;
   }
 };
 
@@ -204,30 +253,61 @@ public:
 
   void comer() {
 
-    unique_lock<mutex> lock(mutex_animais);
-    cout << "Suricato comendo...      (Suricato < " << id << " >)" << endl;
-    lock.unlock();
+    int qtdComida = Util::random(1, 2);
+    int tempoDeEspera = 0;
+    bool querComer = true;
+    int priority = 0;
 
-    this_thread::sleep_for(chrono::milliseconds(1));
+    unique_lock<mutex> lockComedouroSuricatos(mutexComedouroSuricatos,
+                                              defer_lock);
+
+    lock_guard<mutex> lock(priority_queue_suricatos);
+    priority++;
+    queue_suricatos.push(priority);
+
+    while (querComer) {
+
+      lockComedouroSuricatos.lock();
+
+      if (comedouroSuricatos - qtdComida >= 0 &&
+          queue_suricatos.top() == priority) {
+        cout << "SURICATO < ID: " << id << " > COMENDO < " << qtdComida
+             << " > INSETOS E LARVAS." << endl;
+        comedouroSuricatos = comedouroSuricatos - qtdComida;
+        registro = registro + qtdComida;
+        querComer = false;
+        queue_suricatos.pop();
+        priority = 0;
+      } else {
+        tempoDeEspera++;
+        priority++;
+        queue_suricatos.push(priority);
+      }
+      lockComedouroSuricatos.unlock();
+
+      this_thread::sleep_for(chrono::milliseconds(500));
+
+      if (!continuarExecutando) {
+        return;
+      }
+    }
   }
 
   void exibir() {
-
-    unique_lock<mutex> lock(mutex_animais);
-    cout << "Suricato se exibindo...  (Suricato < " << id << " >)" << endl;
-    lock.unlock();
-
+    cout << "SURICATO < ID: " << id << " > SE EXIBINDO" << endl;
     this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
   }
 
   void dormir() {
-
-    unique_lock<mutex> lock(mutex_animais);
-    cout << "Dormindo...              (Suricato < " << id << " >)" << endl;
-    lock.unlock();
-
+    cout << "SURICATO < ID: " << id << " > DORMINDO" << endl;
     this_thread::sleep_for(chrono::seconds(Util::random(1, 2)));
-    cout << "Acordei...               (Suricato < " << id << " >)" << endl;
+    cout << "SURICATO < ID: " << id << " > ACORDOU" << endl;
+  }
+
+  void encerrar() {
+    cout << "| RELATÓRIO | >> "
+         << "SURICATO < ID: " << id << " > COMEU: < " << registro
+         << " > INSETOS E LARVAS." << endl;
   }
 };
 
@@ -246,24 +326,57 @@ public:
   void entregarComida() {
     while (continuarExecutando) {
 
-      if (comedouroLeoes == 30) {
-        cout << "Depósito de carne cheio!";
-        this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
-        continue;
+      if (comedouroLeoes == 10) {
+        cout << "VETERINÁRIO < ID: " << id << " > "
+             << "Depósito de carne cheio!" << endl;
       } else {
-        //unique_lock<mutex> lockLeoes(mutexComedouroLeoes);
-        sem_wait(&smphComedouroLeoes);
+        unique_lock<mutex> lockLeoes(mutexComedouroLeoes);
         comedouroLeoes++;
-        //lockLeoes.unlock();
-        sem_post(&smphComedouroLeoes);
+        lockLeoes.unlock();
 
         unique_lock<mutex> lockEstoqueCarne(mutexEstoqueCarne);
         estoqueCarne--;
         lockEstoqueCarne.unlock();
 
-        cout << "VET < " << id << " > moveu < 1 > carne para o comedouro."
-             << endl;
+        cout << "VETERINÁRIO < ID: " << id
+             << " > moveu < 1 > carne para o comedouro." << endl;
+        this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
       }
+
+      if (comedouroAvestruzes == 10) {
+        cout << "VETERINÁRIO < ID: " << id << " > "
+             << "Depósito de pastos e ervas cheio!" << endl;
+      } else {
+        unique_lock<mutex> lockAvestruzes(mutexComedouroAvestruzes);
+        comedouroAvestruzes++;
+        lockAvestruzes.unlock();
+
+        unique_lock<mutex> lockEstoquePasto(mutexEstoquePasto);
+        estoquePasto--;
+        lockEstoquePasto.unlock();
+
+        cout << "VETERINÁRIO < ID: " << id << " > "
+             << " > moveu < 1 > pasto e ervas para o comedouro." << endl;
+        this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
+      }
+
+      if (comedouroSuricatos == 10) {
+        cout << "VETERINÁRIO < ID: " << id << " > "
+             << "Depósito de insetos e larvas cheio!" << endl;
+      } else {
+        unique_lock<mutex> lockSuricatos(mutexComedouroSuricatos);
+        comedouroSuricatos++;
+        lockSuricatos.unlock();
+
+        unique_lock<mutex> lockEstoqueLarvas(mutexEstoqueLarvas);
+        estoqueLarvas--;
+        lockEstoqueLarvas.unlock();
+
+        cout << "VETERINÁRIO < ID: " << id << " > "
+             << " > moveu < 1 > insetos e larvas para o comedouro." << endl;
+        this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
+      }
+      // Tempo de descanso
       this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
     }
   }
@@ -277,30 +390,32 @@ class Fornecedor {
   void abastecer() {
     while (continuarExecutando) {
       if (estoqueLarvas == 0 || estoquePasto == 0 || estoqueCarne == 0) {
+
+        unique_lock<mutex> lockEstoqueLarvas(mutexEstoqueLarvas);
         estoqueLarvas = 30;
-        estoquePasto = 30;
+        lockEstoqueLarvas.unlock();
+
+        unique_lock<mutex> lockEstoqueCarnes(mutexEstoqueCarne);
         estoqueCarne = 30;
-        cout << "Reestocagem: tudo cheio." << endl;
+        lockEstoqueCarnes.unlock();
+
+        unique_lock<mutex> lockEstoquePasto(mutexEstoquePasto);
+        estoquePasto = 30;
+        lockEstoquePasto.unlock();
+
+        cout << "Fornecedor foi chamado e o estoque está com tudo cheio."
+             << endl;
       }
     }
   }
 };
 
-class Comedouro {
-protected:
-  int capacidade;
-
-public:
-  Comedouro() { capacidade = 0; }
-};
-
-
 int main() {
-
-  sem_init(&smphComedouroLeoes, 0, 1);
 
   Animal *animais[N_LEOES + N_SURICATOS + N_AVESTRUZES];
   Veterinario *veterinarios[N_VETERINARIOS];
+
+  pthread_barrier_init(&barreira, NULL, N_LEOES + N_SURICATOS + N_AVESTRUZES);
 
   const int N_ANIMAIS = N_LEOES + N_SURICATOS + N_AVESTRUZES;
   thread tempo(&Util::tempo);
@@ -358,8 +473,7 @@ int main() {
   }
 
   tempo.join();
-
-  sem_destroy(&smphComedouroLeoes);
+  pthread_barrier_destroy(&barreira);
 
   // cout << "\U0001F346" << endl;
   // cout << "\U0001F4A7" << endl;
