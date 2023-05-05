@@ -14,7 +14,7 @@
 #define N_SURICATOS 10
 #define N_VETERINARIOS 2
 // Segundos
-#define TEMPO_EXECUCAO 100
+#define TEMPO_EXECUCAO 50
 // Milissegundos
 #define TEMPO_ACAO 500
 
@@ -67,10 +67,12 @@ public:
 
     while (continuarExecutando) {
       this_thread::sleep_for(chrono::seconds(1));
-      cout << ++segundos << " HORAS" << endl
+      cout << endl
+           << ++segundos << " HORAS" << endl
            << "Carnes < " << comedouroLeoes << " > |"
            << " Pastos < " << comedouroAvestruzes << " > |"
-           << " Larvas < " << comedouroSuricatos << " > |" << endl;
+           << " Larvas < " << comedouroSuricatos << " > |" << endl
+           << endl;
       if (segundos == TEMPO_EXECUCAO) {
         continuarExecutando = false;
       }
@@ -82,6 +84,7 @@ class Animal {
 protected:
   static mutex mutex_animais;
   static int contador;
+  int acessou_comida;
   int registro;
   int id;
 
@@ -108,6 +111,7 @@ public:
     contador++;
     id = contador;
     registro = 0;
+    acessou_comida = 0;
   }
 };
 
@@ -140,6 +144,7 @@ public:
              << " > CARNES." << endl;
         comedouroLeoes = comedouroLeoes - qtdComida;
         registro = registro + qtdComida;
+        acessou_comida++;
         querComer = false;
         queue_leoes.pop();
         priority = 0;
@@ -173,8 +178,9 @@ public:
 
   void encerrar() {
     cout << "| RELATÓRIO | >> "
-         << "LEÃO < ID: " << id << " > COMEU: < " << registro << " > CARNES."
-         << endl;
+         << "LEÃO      < ID: " << id << " > COMEU: < " << registro
+         << " > CARNES."
+         << "          | ACESS < " << acessou_comida << " > " << endl;
   }
 };
 
@@ -206,6 +212,7 @@ public:
              << " > PASTOS E ERVAS" << endl;
         comedouroAvestruzes = comedouroAvestruzes - qtdComida;
         registro = registro + qtdComida;
+        acessou_comida++;
         querComer = false;
         queue_avestruzes.pop();
         priority = 0;
@@ -242,8 +249,9 @@ public:
 
   void encerrar() {
     cout << "| RELATÓRIO | >> "
-         << "AVESTRUZ < ID: " << id << " > COMEU: < " << registro
-         << " > PASTOS E ERVAS." << endl;
+         << "AVESTRUZ  < ID: " << id << " > COMEU: < " << registro
+         << " > PASTOS E ERVAS."
+         << "  | ACESS < " << acessou_comida << " > " << endl;
   }
 };
 
@@ -275,6 +283,7 @@ public:
              << " > INSETOS E LARVAS." << endl;
         comedouroSuricatos = comedouroSuricatos - qtdComida;
         registro = registro + qtdComida;
+        acessou_comida++;
         querComer = false;
         queue_suricatos.pop();
         priority = 0;
@@ -307,7 +316,8 @@ public:
   void encerrar() {
     cout << "| RELATÓRIO | >> "
          << "SURICATO < ID: " << id << " > COMEU: < " << registro
-         << " > INSETOS E LARVAS." << endl;
+         << " > INSETOS E LARVAS."
+         << "  | ACESS < " << acessou_comida << " > " << endl;
   }
 };
 
@@ -355,7 +365,7 @@ public:
         estoquePasto--;
         lockEstoquePasto.unlock();
 
-        cout << "VETERINÁRIO < ID: " << id << " > "
+        cout << "VETERINÁRIO < ID: " << id
              << " > moveu < 1 > pasto e ervas para o comedouro." << endl;
         this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
       }
@@ -372,7 +382,7 @@ public:
         estoqueLarvas--;
         lockEstoqueLarvas.unlock();
 
-        cout << "VETERINÁRIO < ID: " << id << " > "
+        cout << "VETERINÁRIO < ID: " << id
              << " > moveu < 1 > insetos e larvas para o comedouro." << endl;
         this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
       }
