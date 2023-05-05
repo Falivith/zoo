@@ -1,20 +1,19 @@
 #include <chrono>
-#include <condition_variable>
 #include <fstream>
 #include <iostream>
 #include <mutex>
 #include <pthread.h>
 #include <queue>
 #include <random>
-#include <semaphore>
 #include <thread>
 
 #define N_LEOES 4
 #define N_AVESTRUZES 7
 #define N_SURICATOS 10
 #define N_VETERINARIOS 2
+#define N_FORNECEDORES 1
 // Segundos
-#define TEMPO_EXECUCAO 50
+#define TEMPO_EXECUCAO 72
 // Milissegundos
 #define TEMPO_ACAO 500
 
@@ -72,6 +71,10 @@ public:
            << "Carnes < " << comedouroLeoes << " > |"
            << " Pastos < " << comedouroAvestruzes << " > |"
            << " Larvas < " << comedouroSuricatos << " > |" << endl
+           << endl
+           << "Est. Carnes < " << estoqueCarne << " > |"
+           << " Est. Pastos < " << estoquePasto << " > |"
+           << " Est. Larvas < " << estoqueLarvas << " > |" << endl
            << endl;
       if (segundos == TEMPO_EXECUCAO) {
         continuarExecutando = false;
@@ -326,6 +329,7 @@ class Veterinario {
 protected:
   static int contador;
   int id;
+  bool temComida;
 
 public:
   Veterinario() {
@@ -338,15 +342,24 @@ public:
 
       if (comedouroLeoes == 10) {
         cout << "VETERINÁRIO < ID: " << id << " > "
-             << "Depósito de carne cheio!" << endl;
+             << "Comedouro de carne cheio!" << endl;
       } else {
-        unique_lock<mutex> lockLeoes(mutexComedouroLeoes);
-        comedouroLeoes++;
-        lockLeoes.unlock();
 
         unique_lock<mutex> lockEstoqueCarne(mutexEstoqueCarne);
-        estoqueCarne--;
+        if (estoqueCarne > 0) {
+          temComida = true;
+          estoqueCarne--;
+        } else {
+          cout << "Sem carne no estoque!" << endl;
+          temComida = false;
+        }
         lockEstoqueCarne.unlock();
+
+        unique_lock<mutex> lockLeoes(mutexComedouroLeoes);
+        if (temComida) {
+          comedouroLeoes++;
+        }
+        lockLeoes.unlock();
 
         cout << "VETERINÁRIO < ID: " << id
              << " > moveu < 1 > carne para o comedouro." << endl;
@@ -355,15 +368,25 @@ public:
 
       if (comedouroAvestruzes == 10) {
         cout << "VETERINÁRIO < ID: " << id << " > "
-             << "Depósito de pastos e ervas cheio!" << endl;
+             << "Comedouro de pastos e ervas cheio!" << endl;
       } else {
-        unique_lock<mutex> lockAvestruzes(mutexComedouroAvestruzes);
-        comedouroAvestruzes++;
-        lockAvestruzes.unlock();
 
         unique_lock<mutex> lockEstoquePasto(mutexEstoquePasto);
-        estoquePasto--;
+        if (estoquePasto > 0) {
+          temComida = true;
+          estoquePasto--;
+        } else {
+          cout << "Sem pasto no estoque!" << endl;
+          temComida = false;
+        }
         lockEstoquePasto.unlock();
+
+        unique_lock<mutex> lockAvestruzes(mutexComedouroAvestruzes);
+        if (temComida) {
+          comedouroAvestruzes++;
+        }
+
+        lockAvestruzes.unlock();
 
         cout << "VETERINÁRIO < ID: " << id
              << " > moveu < 1 > pasto e ervas para o comedouro." << endl;
@@ -372,15 +395,24 @@ public:
 
       if (comedouroSuricatos == 10) {
         cout << "VETERINÁRIO < ID: " << id << " > "
-             << "Depósito de insetos e larvas cheio!" << endl;
+             << "Comedouro de insetos e larvas cheio!" << endl;
       } else {
-        unique_lock<mutex> lockSuricatos(mutexComedouroSuricatos);
-        comedouroSuricatos++;
-        lockSuricatos.unlock();
 
         unique_lock<mutex> lockEstoqueLarvas(mutexEstoqueLarvas);
-        estoqueLarvas--;
+        if (estoqueLarvas > 0) {
+          temComida = true;
+          estoqueLarvas--;
+        } else {
+          cout << "Sem larva no estoque!" << endl;
+          temComida = false;
+        }
         lockEstoqueLarvas.unlock();
+
+        unique_lock<mutex> lockSuricatos(mutexComedouroSuricatos);
+        if (temComida) {
+          comedouroSuricatos++;
+        }
+        lockSuricatos.unlock();
 
         cout << "VETERINÁRIO < ID: " << id
              << " > moveu < 1 > insetos e larvas para o comedouro." << endl;
@@ -397,6 +429,7 @@ public:
 int Veterinario::contador = 0;
 
 class Fornecedor {
+public:
   void abastecer() {
     while (continuarExecutando) {
       if (estoqueLarvas == 0 || estoquePasto == 0 || estoqueCarne == 0) {
@@ -415,6 +448,7 @@ class Fornecedor {
 
         cout << "Fornecedor foi chamado e o estoque está com tudo cheio."
              << endl;
+        this_thread::sleep_for(chrono::milliseconds(TEMPO_ACAO));
       }
     }
   }
@@ -424,6 +458,7 @@ int main() {
 
   Animal *animais[N_LEOES + N_SURICATOS + N_AVESTRUZES];
   Veterinario *veterinarios[N_VETERINARIOS];
+  Fornecedor *fornecedores[N_FORNECEDORES];
 
   pthread_barrier_init(&barreira, NULL, N_LEOES + N_SURICATOS + N_AVESTRUZES);
 
@@ -451,10 +486,17 @@ int main() {
     veterinarios[i] = new Veterinario();
   }
 
+  // Criação dos fornecedores
+
+  for (int i = 0; i < N_FORNECEDORES; i++) {
+    fornecedores[i] = new Fornecedor();
+  }
+
   // Criação das Threads
 
   thread threadsVeterinario[N_VETERINARIOS];
   thread threadsAnimais[N_ANIMAIS];
+  thread threadsFornecedores[N_FORNECEDORES];
 
   // Lança a rotina viver para todos
 
@@ -466,9 +508,18 @@ int main() {
     threadsVeterinario[i] = thread(&Veterinario::viver, veterinarios[i]);
   }
 
+  for (int i = 0; i < N_FORNECEDORES; i++) {
+    threadsFornecedores[i] = thread(&Fornecedor::abastecer, fornecedores[i]);
+  }
+
   for (int i = 0; i < N_VETERINARIOS; i++) {
     threadsVeterinario[i].join();
   }
+
+  for (int i = 0; i < N_FORNECEDORES; i++) {
+    threadsFornecedores[i].join();
+  }
+  // Deleta os objetos e threads
 
   for (int i = 0; i < N_VETERINARIOS; i++) {
     delete veterinarios[i];
@@ -482,11 +533,11 @@ int main() {
     delete animais[i];
   }
 
+  for (int i = 0; i < N_FORNECEDORES; i++) {
+    delete fornecedores[i];
+  }
   tempo.join();
   pthread_barrier_destroy(&barreira);
-
-  // cout << "\U0001F346" << endl;
-  // cout << "\U0001F4A7" << endl;
 
   cout << endl
        << " ------ \U0001F60A Fim da Simulação \U0001F60A ------ " << endl;
